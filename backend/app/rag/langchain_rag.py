@@ -12,6 +12,11 @@ from app.utils.logger import get_logger
 logger = get_logger(__name__)
 settings = get_settings()
 
+"""
+LangChainRAGService is responsible for:
+1. Ingesting code repositories and converting them into vector embeddings for retrieval.
+2. Searching the ingested repositories based on user queries and returning relevant code snippets and metadata.
+"""
 
 class LangChainRAGService:
     def __init__(self):

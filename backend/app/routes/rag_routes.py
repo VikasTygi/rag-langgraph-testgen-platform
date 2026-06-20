@@ -22,7 +22,7 @@ class RagSearchRequest(BaseModel):
 def rag_status():
     return {
         "status": "ok",
-        "service": "rag",
+        "service": "rag status call",
     }
 
 
