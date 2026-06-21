@@ -108,8 +108,9 @@ page objects, API payloads, locators, setup steps, and validation logic.
         query: str,
         framework: str = "generic",
         top_k: int = 4,
-    ) -> dict:
-        docs = self.search(
+        user: dict | None = None,
+    ):
+        results = self.search(
             query=query,
             framework=framework,
             top_k=top_k,
@@ -118,13 +119,14 @@ page objects, API payloads, locators, setup steps, and validation logic.
         return {
             "query": query,
             "framework": framework,
-            "count": len(docs),
+            "top_k": top_k,
+            "searched_by": user.get("sub") or user.get("username") if user else None,
+            "role": user.get("role") if user else None,
             "results": [
                 {
-                    "source": doc.metadata.get("source", "unknown"),
-                    "framework": doc.metadata.get("framework", "unknown"),
                     "content": doc.page_content,
+                    "metadata": doc.metadata,
                 }
-                for doc in docs
+                for doc in results
             ],
         }
