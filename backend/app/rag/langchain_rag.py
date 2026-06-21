@@ -4,6 +4,7 @@ from langchain_chroma import Chroma
 from langchain_core.documents import Document
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_text_splitters import RecursiveCharacterTextSplitter
+from app.security.secret_scanner import assert_no_secrets_before_ingest
 
 from app.config import get_settings
 from app.rag.repo_loader import load_repo_as_documents
@@ -31,6 +32,7 @@ class LangChainRAGService:
         )
 
     def ingest_repo(self, repo_path: str, framework: str = "generic") -> dict:
+        assert_no_secrets_before_ingest(repo_path)
         documents = load_repo_as_documents(
             repo_path=repo_path,
             framework=framework,

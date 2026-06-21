@@ -1,11 +1,12 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
 from typing import Optional
-from fastapi import Depends
-from app.auth.dependencies import require_permission
 
+from app.auth.dependencies import require_permission
 from app.rag.langchain_rag import LangChainRAGService
 from app.security.prompt_guard import validate_prompt
+from app.security.secret_scanner import SecretScanError
+
 
 router = APIRouter()
 
@@ -30,7 +31,10 @@ def rag_status():
 
 
 @router.post("/ingest")
-def ingest_repo(request: RagIngestRequest, current_user: dict = Depends(require_permission("rag:ingest"))):
+def ingest_repo(
+    request: RagIngestRequest,
+    current_user: dict = Depends(require_permission("rag:ingest")),
+):
     try:
         rag_service = LangChainRAGService()
 
@@ -43,20 +47,53 @@ def ingest_repo(request: RagIngestRequest, current_user: dict = Depends(require_
             "status": "success",
             "repo_path": request.repo_path,
             "framework": request.framework,
+            "secret_scanned": result.get("secret_scanned", True),
             "files_loaded": result["files_loaded"],
             "chunks_stored": result["chunks_stored"],
             "sample_files": result["sample_files"],
-            "user": current_user,
+            "ingested_by": current_user.get("username"),
+            "role": current_user.get("role"),
         }
 
+    except SecretScanError as exc:
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "status": "blocked",
+                "reason": "Secret scanning failed. Repository contains secrets and was not embedded.",
+                "blocked_files": exc.result.blocked_files,
+                "findings": [
+                    {
+                        "file_path": finding.file_path,
+                        "line_number": finding.line_number,
+                        "secret_type": finding.secret_type,
+                        "fingerprint": finding.fingerprint,
+                    }
+                    for finding in exc.result.findings
+                ],
+                "message": "Remove secrets before ingestion. Actual secret values are never returned.",
+            },
+        )
+
+    except FileNotFoundError as exc:
+        raise HTTPException(
+            status_code=404,
+            detail=str(exc),
+        )
+
     except Exception as exc:
-        raise HTTPException(status_code=500, detail=str(exc))
+        raise HTTPException(
+            status_code=500,
+            detail=str(exc),
+        )
 
 
 @router.post("/search")
-def search_repo(request: RagSearchRequest, current_user: dict = Depends(require_permission("rag:search"))):
-    
-        # Validate user query before RAG/vector search
+def search_repo(
+    request: RagSearchRequest,
+    current_user: dict = Depends(require_permission("rag:search")),
+):
+    # Validate user query before RAG/vector search
     guard_result = validate_prompt(request.query)
 
     if not guard_result["allowed"]:
@@ -65,7 +102,6 @@ def search_repo(request: RagSearchRequest, current_user: dict = Depends(require_
             detail=guard_result,
         )
 
-    
     try:
         rag_service = LangChainRAGService()
 
@@ -77,4 +113,7 @@ def search_repo(request: RagSearchRequest, current_user: dict = Depends(require_
         )
 
     except Exception as exc:
-        raise HTTPException(status_code=500, detail=str(exc))
+        raise HTTPException(
+            status_code=500,
+            detail=str(exc),
+        )
