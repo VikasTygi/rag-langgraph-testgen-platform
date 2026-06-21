@@ -4,11 +4,13 @@ from app.graph.state import TestGenerationState
 from app.llm.ollama_llm import OllamaLLM
 from app.rag.langchain_rag import LangChainRAGService
 from app.validator.script_validator import ScriptValidator
+from app.security.context_guard import control_rag_context
+# from app.rag.vector_store import LangChainRAGService
 
 settings = get_settings()
 
 
-def clean_generated_code(code: str) -> str:
+def clean_generated_code(code: str, framework: str | None = None) -> str:
     code = code.strip()
 
     prefixes = [
@@ -26,6 +28,30 @@ def clean_generated_code(code: str) -> str:
 
     if code.endswith("```"):
         code = code[:-3].strip()
+
+    # Remove common unwanted first-line labels from LLM output
+    unwanted_first_lines = {
+        "framework",
+        "robot",
+        "robotframework",
+        "python",
+        "pytest",
+        "typescript",
+        "playwright",
+    }
+
+    lines = code.splitlines()
+
+    while lines and lines[0].strip().lower() in unwanted_first_lines:
+        lines.pop(0)
+
+    code = "\n".join(lines).strip()
+
+    # For Robot Framework, force output to start from first Robot section
+    if framework and framework.lower() in ["robot", "robotframework"]:
+        robot_start = code.find("*** Settings ***")
+        if robot_start != -1:
+            code = code[robot_start:].strip()
 
     return code
 
@@ -55,44 +81,72 @@ Validation-aware workflow:
     }
 
 
-def retriever_node(state: TestGenerationState) -> dict:
+def retriever_node(state: dict) -> dict:
+    user_prompt = state.get("user_prompt")
+    framework = state.get("framework", "generic")
+    top_k = state.get("top_k", 5)
+    current_user = state.get("user")
+
+    print("===== GENERATE RETRIEVER DEBUG =====")
+    print("user_prompt:", user_prompt)
+    print("framework:", framework)
+    print("top_k:", top_k)
+    print("user:", current_user)
+
     rag_service = LangChainRAGService()
 
-    docs = rag_service.search(
-        query=state["user_prompt"],
-        framework=state["framework"],
-        top_k=state["top_k"],
-    )
+    retrieved_docs = rag_service.search(
+        query=user_prompt,
+        framework=framework,
+        top_k=top_k,
+)
 
-    # fallback to generic search if framework-specific search returns nothing
-    if not docs:
-        docs = rag_service.search(
-            query=state["user_prompt"],
-            framework="generic",
-            top_k=state["top_k"],
-        )
+    print("retrieved_docs_count:", len(retrieved_docs))
 
-    print(f"DEBUG: LangGraph retrieved_docs count = {len(docs)}")
+    for index, doc in enumerate(retrieved_docs):
+        print(f"doc {index + 1} metadata:", doc.metadata)
+        print(f"doc {index + 1} content:", doc.page_content[:300])
 
     return {
-        "retrieved_docs": docs,
+        **state,
+        "retrieved_docs": retrieved_docs,
+        "retrieved_context_count": len(retrieved_docs),
     }
 
 def generator_node(state: TestGenerationState) -> dict:
+    retrieved_docs = state.get("retrieved_docs", [])
+
+    if not retrieved_docs:
+        return {
+            "status": "need_more_context",
+            "message": "No relevant automation context found.",
+            "missing": [
+                "login flow",
+                "venue creation keyword",
+                "verification logic",
+            ],
+            "generated_code": None,
+            "valid": False,
+            "errors": [],
+            "validation_summary": "Generation skipped because no relevant automation context was found.",
+        }
+
     llm = OllamaLLM()
 
     prompt = build_generation_prompt(
         user_prompt=state["user_prompt"],
         framework=state["framework"],
-        retrieved_docs=state["retrieved_docs"],
+        retrieved_docs=retrieved_docs,
     )
 
-    generated_code = clean_generated_code(llm.generate(prompt))
+    generated_code = clean_generated_code(
+        llm.generate(prompt),
+        framework=state["framework"],
+    )
 
     return {
         "generated_code": generated_code,
     }
-
 
 def validator_node(state: TestGenerationState) -> dict:
     validator = ScriptValidator()
@@ -106,6 +160,7 @@ def validator_node(state: TestGenerationState) -> dict:
         "valid": result["valid"],
         "errors": result["errors"],
         "validation_summary": result["validation_summary"],
+        "validation_result": result,
     }
 
 
@@ -146,7 +201,10 @@ Output rules:
 6. Fix only syntax, structure, undefined variables, missing imports, and framework compliance issues.
 """.strip()
 
-    fixed_code = clean_generated_code(llm.generate(fix_prompt))
+    fixed_code = clean_generated_code(
+        llm.generate(fix_prompt),
+        framework=state["framework"],
+    )
 
     return {
         "generated_code": fixed_code,
@@ -193,10 +251,6 @@ Playwright TypeScript:
     return "Fix syntax and framework compliance issues."
 
 
-def final_output_node(state: TestGenerationState) -> dict:
-    return {}
-
-
 def should_fix_or_finish(state: TestGenerationState) -> str:
     if state["valid"]:
         return "final_output"
@@ -205,3 +259,100 @@ def should_fix_or_finish(state: TestGenerationState) -> str:
         return "fixer"
 
     return "final_output"
+
+def controlled_context_node(state: TestGenerationState) -> TestGenerationState:
+    retrieved_docs = state.get("retrieved_docs", [])
+    user_prompt = state["user_prompt"]
+    framework = state["framework"]
+    user = state.get("user", {})
+
+    print("\n===== CONTROLLED CONTEXT DEBUG =====")
+    print("docs before context guard:", len(retrieved_docs))
+    print("user_prompt:", user_prompt)
+    print("framework:", framework)
+    print("user:", user)
+
+    for index, doc in enumerate(retrieved_docs):
+        print(f"\n--- context doc {index + 1} ---")
+        print("type:", type(doc))
+
+        if hasattr(doc, "metadata"):
+            print("metadata:", doc.metadata)
+
+        if hasattr(doc, "page_content"):
+            print("content:", doc.page_content[:500])
+        else:
+            print("raw:", str(doc)[:500])
+
+    context_result = control_rag_context(
+        docs=retrieved_docs,
+        user_prompt=user_prompt,
+        framework=framework,
+        user=user,
+    )
+
+    print("context_result:", context_result)
+
+    if not context_result["allowed"]:
+        state["status"] = "need_more_context"
+        state["message"] = context_result["message"]
+        state["missing"] = context_result["missing"]
+        state["retrieved_docs"] = []
+        state["retrieved_context_count"] = 0
+        state["generated_code"] = None
+        state["valid"] = False
+        state["errors"] = []
+        state["validation_summary"] = "Generation skipped because no controlled RAG context was found."
+        state["stop_generation"] = True
+        return state
+
+    safe_docs = context_result["safe_docs"]
+
+    state["status"] = "context_ready"
+    state["message"] = "Controlled RAG context is available."
+    state["missing"] = []
+    state["retrieved_docs"] = safe_docs
+    state["retrieved_context_count"] = len(safe_docs)
+    state["stop_generation"] = False
+
+    return state
+
+def should_generate_or_stop(state: TestGenerationState) -> str:
+    if state.get("stop_generation"):
+        return "final_output"
+
+    return "generator"
+
+def final_output_node(state: TestGenerationState) -> TestGenerationState:
+    if state.get("status") == "need_more_context":
+        state["generated_code"] = None
+        state["valid"] = False
+        state["errors"] = []
+        state["validation_summary"] = "Generation skipped because no relevant automation context was found."
+        state["validation_result"] = {
+            "valid": False,
+            "errors": [],
+            "validation_summary": state["validation_summary"],
+        }
+        return state
+
+    if state.get("valid") is True:
+        state["status"] = "success"
+
+        if not state.get("message"):
+            state["message"] = "Code generated and validated successfully."
+
+    else:
+        state["status"] = "validation_failed"
+
+        if not state.get("message"):
+            state["message"] = "Code was generated but validation failed."
+
+    if not state.get("validation_result"):
+        state["validation_result"] = {
+            "valid": state.get("valid", False),
+            "errors": state.get("errors", []),
+            "validation_summary": state.get("validation_summary", ""),
+        }
+
+    return state

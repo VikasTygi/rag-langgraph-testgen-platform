@@ -151,3 +151,16 @@ LangChain:-
         ↓
 
 18. API returns generated valid automation code
+
+
+I built a RAG-based AI test generation platform where historical Robot Framework, Python, and Playwright automation repositories are indexed into ChromaDB. During ingestion, files are loaded as LangChain Documents, split into chunks, converted into embeddings using transformer-based embedding models, and stored in a vector database with metadata. When a user gives a natural language prompt like “Create venue on Ruckus Cloud,” the FastAPI generate endpoint triggers a LangGraph workflow. The planner creates the task plan, the retriever searches ChromaDB for similar historical automation code, the generator builds a framework-specific prompt, and a local LLM through Ollama generates the test script. The validator then checks the generated code using framework-specific validation, such as Robot dry-run for Robot Framework, AST parsing for Python, and structural checks for Playwright. If validation fails, LangGraph routes the code to a fixer node, which asks the LLM to correct the code and validates it again before returning the final script.
+
+
+
+Hallucination control
+If retrieved_context_count == 0, do not generate code.
+If API endpoint is not found in retrieved context, do not invent it.
+If locator is not found in retrieved context, ask for more context.
+If keyword is not found, generate a clear missing-context response.
+
+For production, I added multiple AI guardrails around the RAG-based test generation flow. The production flow starts with authenticated access and RBAC so users can only retrieve code from authorized repositories. Before generation, a prompt guard checks for unsafe or destructive requests, and repository ingestion includes secret scanning to prevent credentials from being embedded into ChromaDB. The RAG layer uses controlled context retrieval, and if no relevant context is found, the system does not allow the LLM to hallucinate; it returns a need-more-context response. Retrieved context is treated as untrusted data to reduce prompt-injection risk. The LLM generation is constrained by framework-specific prompts, and generated code is validated using Robot dry-run, Python AST checks, or Playwright structure checks. If validation fails, LangGraph routes it to a fixer node, then validates again. Before execution, risk scoring and human approval are applied for destructive actions, and any execution runs only inside a sandboxed container. Finally, all actions are audit logged and monitored using metrics for retrieval success, validation pass rate, auto-fix success, and blocked prompts.

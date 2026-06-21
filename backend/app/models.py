@@ -1,6 +1,6 @@
 from typing import Any, Dict, List, Optional
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class HealthResponse(BaseModel):
@@ -37,18 +37,23 @@ class SearchResponse(BaseModel):
 
 
 class GenerateRequest(BaseModel):
-    prompt: str
-    framework: str = "robot"
-    top_k: int = 4
+    user_prompt: str
+    framework: str = "generic"
+    top_k: int = 3
 
 
 class GenerateResponse(BaseModel):
-    framework: str
-    user_prompt: str
-    plan: str
-    retrieved_context_count: int
-    generated_code: str
-    valid: bool
-    errors: List[str]
-    fix_attempts: int
-    validation_summary: str
+    status: str = "success"
+    message: Optional[str] = None
+    missing: list[str] = Field(default_factory=list)
+
+    framework: Optional[str] = None
+    user_prompt: Optional[str] = None
+    plan: Optional[str] = None
+    retrieved_context_count: int = 0
+    generated_code: Optional[str] = None
+    validation_result: dict[str, Any] | None = None
+    valid: bool = False
+    errors: list[str] = []
+    fix_attempts: int = 0
+    validation_summary: str | None = None

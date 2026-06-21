@@ -5,7 +5,7 @@ from langchain_core.documents import Document
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 from app.rag.vector_store import add_documents_to_store
-
+from app.rag.repo_metadata import resolve_repo_metadata
 
 ALLOWED_EXTENSIONS = {
     ".robot",
@@ -45,24 +45,17 @@ def load_repo_documents(repo_path: str, framework: str = "generic") -> List[Docu
         if file_path.suffix not in ALLOWED_EXTENSIONS:
             continue
 
-        detected_framework = detect_framework(file_path)
-
-        if framework.lower() != "generic" and framework.lower() != detected_framework:
-            continue
-
         content = file_path.read_text(encoding="utf-8", errors="ignore")
 
-        if not content.strip():
-            continue
+        metadata = resolve_repo_metadata(
+            file_path=str(file_path),
+            default_framework=framework,
+        )
 
         documents.append(
             Document(
                 page_content=content,
-                metadata={
-                    "source": str(file_path),
-                    "framework": detected_framework,
-                    "file_name": file_path.name,
-                },
+                metadata=metadata,
             )
         )
 
@@ -88,3 +81,16 @@ def ingest_repository(repo_path: str, framework: str = "generic") -> dict:
         "chunks_stored": stored_count,
         "sample_files": [doc.metadata["source"] for doc in raw_documents[:10]],
     }
+
+def split_documents(documents: list[Document]) -> list[Document]:
+    splitter = RecursiveCharacterTextSplitter(
+        chunk_size=1200,
+        chunk_overlap=200,
+    )
+
+    chunks = splitter.split_documents(documents)
+
+    for index, chunk in enumerate(chunks):
+        chunk.metadata["chunk_index"] = index
+
+    return chunks

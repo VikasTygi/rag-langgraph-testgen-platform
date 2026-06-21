@@ -29,3 +29,5 @@ langchain-chroma
 langchain-huggingface
 sentence-transformers
 langchain-text-splitters
+python-jose[cryptography]
+passlib[bcrypt]
