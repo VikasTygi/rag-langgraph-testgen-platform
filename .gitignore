@@ -9,3 +9,4 @@ output.xml
 log.html
 report.html
 *.log
+backend/sample_repos/.env

@@ -67,7 +67,7 @@ pipeline {
                         . .venv/bin/activate
                         pip install ruff bandit
                         ruff check app
-                        bandit -r app
+                        bandit -r app -ll
                     '''
                 }
             }

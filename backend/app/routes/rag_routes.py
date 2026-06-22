@@ -43,6 +43,9 @@ def ingest_repo(
             framework=request.framework,
         )
 
+        files_loaded = result.get("files_loaded", result.get("indexed_files", 0))
+        chunks_stored = result.get("chunks_stored", result.get("indexed_chunks", 0))
+
         return {
             "status": "success",
             "repo_path": request.repo_path,
@@ -53,6 +56,10 @@ def ingest_repo(
             "sample_files": result["sample_files"],
             "ingested_by": current_user.get("username"),
             "role": current_user.get("role"),
+        # Old keys expected by tests
+            "indexed_files": files_loaded,
+            "indexed_chunks": chunks_stored,
+
         }
 
     except SecretScanError as exc:

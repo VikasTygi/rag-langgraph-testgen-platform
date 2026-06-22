@@ -9,29 +9,25 @@ class Role(str, Enum):
 
 
 ROLE_PERMISSIONS = {
-    Role.ADMIN: {
+    "admin": [
         "rag:ingest",
-        "rag:search",
-        "generate",
-        "execute",
-        "delete_collection",
-        "manage_users",
-    },
-    Role.DEVELOPER: {
         "rag:search",
         "generate:test",
-        "generate",
-        "rag:ingest",
-    },
-    Role.VIEWER: {
+        "execute:test",
+        "manage:users",
+    ],
+    "developer": [
         "rag:search",
-    },
-    Role.CI_SYSTEM: {
-        "generate",
-        "validate",
-        "execute",
-        "rag:ingest",
-    },
+        "generate:test",
+    ],
+    "viewer": [
+        "rag:search",
+    ],
+    "ci-system": [
+        "rag:search",
+        "generate:test",
+        "execute:test",
+    ],
 }
 
 

@@ -5,6 +5,7 @@ from app.llm.ollama_llm import OllamaLLM
 from app.rag.langchain_rag import LangChainRAGService
 from app.validator.script_validator import ScriptValidator
 from app.security.context_guard import control_rag_context
+from app.generator.framework_output_guard import enforce_framework_output
 # from app.rag.vector_store import LangChainRAGService
 
 settings = get_settings()
@@ -141,6 +142,11 @@ def generator_node(state: TestGenerationState) -> dict:
 
     generated_code = clean_generated_code(
         llm.generate(prompt),
+        framework=state["framework"],
+    )
+
+    generated_code = enforce_framework_output(
+        code=generated_code,
         framework=state["framework"],
     )
 
