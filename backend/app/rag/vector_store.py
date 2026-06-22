@@ -32,7 +32,7 @@ class FastTestEmbeddings(Embeddings):
         vector = [0.0] * self.dimension
 
         for token in text.lower().split():
-            token_hash = int(hashlib.md5(token.encode("utf-8")).hexdigest(), 16)
+            token_hash = int(hashlib.sha256(token.encode("utf-8")).hexdigest(), 16)
             vector[token_hash % self.dimension] += 1.0
 
         norm = math.sqrt(sum(value * value for value in vector)) or 1.0
@@ -72,7 +72,7 @@ def get_vector_store():
 
 def _doc_id(doc: Document, index: int) -> str:
     source = doc.metadata.get("source", "unknown")
-    content_hash = hashlib.md5(doc.page_content.encode("utf-8")).hexdigest()
+    content_hash = hashlib.sha256(doc.page_content.encode("utf-8")).hexdigest()
     return f"{source}:{index}:{content_hash}"
 
 
