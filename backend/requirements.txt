@@ -24,7 +24,8 @@ robotframework-requests
 
 pytest
 pytest-asyncio
-httpxrobotframework-seleniumlibrary
+httpx
+robotframework-seleniumlibrary
 langchain-chroma
 langchain-huggingface
 sentence-transformers
