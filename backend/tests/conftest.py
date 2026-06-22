@@ -1,5 +1,14 @@
 import pytest
 
+import shutil
+import pytest
+
+
+@pytest.fixture(scope="session", autouse=True)
+def clean_chroma_db_for_tests():
+    shutil.rmtree("chroma_db", ignore_errors=True)
+    yield
+    shutil.rmtree("chroma_db", ignore_errors=True)
 
 @pytest.fixture(autouse=True)
 def mock_ollama_llm(monkeypatch):
