@@ -6,7 +6,6 @@ from app.routes.generate_routes import router as generate_router
 from app.routes.health_routes import router as health_router
 from app.routes.rag_routes import router as rag_router
 from app.auth.auth_routes import router as auth_router
-from app.routes.generate_routes import router as generate_router
 
 settings = get_settings()
 
