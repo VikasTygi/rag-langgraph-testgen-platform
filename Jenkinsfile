@@ -6,6 +6,7 @@ pipeline {
         IMAGE_TAG = "${BUILD_NUMBER}"
         DOCKER_IMAGE = "${APP_NAME}:${IMAGE_TAG}"
         PYTHON_VERSION = "python3.11"
+        PATH = "/opt/homebrew/bin:/opt/homebrew/opt/python@3.11/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
     }
 
     options {
@@ -13,12 +14,33 @@ pipeline {
         buildDiscarder(logRotator(numToKeepStr: '10'))
     }
 
+    stage('Check Tools') {
+    steps {
+        sh '''
+            echo "User:"
+            whoami
+
+            echo "PATH:"
+            echo $PATH
+
+            echo "Python:"
+            which python3.11
+            python3.11 --version
+
+            echo "Docker:"
+            which docker
+            docker version
+        '''
+            }
+        }
+
     stages {
         stage('Checkout') {
             steps {
                 checkout scm
             }
         }
+
 
         stage('Install Dependencies') {
             steps {
