@@ -1,5 +1,5 @@
 from fastapi.testclient import TestClient
-
+from tests.auth_helper import auth_headers
 from app.main import app
 
 client = TestClient(app)
@@ -7,7 +7,8 @@ client = TestClient(app)
 
 def test_ingest_repo():
     response = client.post(
-        "/api/v1/ingest",
+        "/api/v1/rag/ingest",
+        headers=auth_headers(),
         json={
             "repo_path": "./sample_repos",
             "framework": "generic",

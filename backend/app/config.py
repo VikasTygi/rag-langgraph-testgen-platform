@@ -10,8 +10,12 @@ class Settings(BaseSettings):
     log_level: str = "INFO"
 
     # RAG / Chroma
+    chroma_collection_name: str = "rag_testgen_collection"
     chroma_db_dir: str = "./chroma_db"
     embedding_model: str = "sentence-transformers/all-MiniLM-L6-v2"
+    chroma_persist_dir: str = "./chroma_db"
+    chunk_size: int = 1000
+    chunk_overlap: int = 200
 
     # Local LLM / Ollama
     ollama_base_url: str = "http://localhost:11434"
