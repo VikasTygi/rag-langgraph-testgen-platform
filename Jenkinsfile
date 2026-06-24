@@ -1,4 +1,3 @@
-```groovy
 pipeline {
     agent any
 
@@ -23,7 +22,6 @@ pipeline {
         EFS_ID = "fs-0c88917ba318fb9ac"
         CHROMA_PERSIST_DIR = "/data/chroma_db"
     }
-
     options {
         timestamps()
     }
@@ -317,4 +315,4 @@ pipeline {
         }
     }
 }
-```
+
