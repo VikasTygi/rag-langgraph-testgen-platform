@@ -76,7 +76,7 @@ pipeline {
 
 stage('Run Unit Tests') {
     steps {
-        catchError(buildResult: 'UNSTABLE', stageResult: 'Passed') {
+        catchError(buildResult: 'UNSTABLE', stageResult: 'SUCCESS') {
             dir('backend') {
                 sh '''
                     . .venv/bin/activate
