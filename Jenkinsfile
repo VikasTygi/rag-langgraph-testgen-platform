@@ -2,62 +2,46 @@ pipeline {
     agent any
 
     environment {
-        PATH = "/opt/homebrew/bin:/opt/homebrew/opt/python@3.11/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
-
-        AWS_REGION = "ap-south-1"
-        ECR_REPO = "rag-langgraph-testgen-platform"
-
-        AWS_ACCOUNT_ID = "989571800722"
-
-        ECR_REGISTRY = "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
-        IMAGE_TAG = "${BUILD_NUMBER}"
-        LOCAL_IMAGE = "${ECR_REPO}:${IMAGE_TAG}"
-        ECR_IMAGE = "${ECR_REGISTRY}/${ECR_REPO}:${IMAGE_TAG}"
-
-        ECS_CLUSTER = "rag-testgen-dev"
-        ECS_SERVICE = "rag-testgen-api"
-        TASK_FAMILY = "rag-testgen-api-dev"
-        CONTAINER_NAME = "rag-testgen-api"
-        ALB_NAME = "rag-testgen-alb-dev"
-        EFS_ID = "fs-0c88917ba318fb9ac"
-        CHROMA_PERSIST_DIR = "/data/chroma_db"
+        AWS_REGION = 'ap-south-1'
+        ECR_REPOSITORY = 'rag-testgen-api'
+        S3_ARTIFACT_BUCKET = 'rag-testgen-artifacts-989571800722-ap-south-1'
     }
+
     options {
         timestamps()
+        disableConcurrentBuilds()
+        buildDiscarder(logRotator(numToKeepStr: '20'))
     }
 
     stages {
+        stage('Checkout') {
+            steps {
+                checkout scm
+            }
+        }
+
         stage('Check Tools') {
             steps {
                 sh '''
                     echo "User:"
                     whoami
 
-                    echo "PATH:"
-                    echo $PATH
+                    echo "Workspace:"
+                    pwd
 
                     echo "Python:"
-                    which python3.11
-                    python3.11 --version
+                    python3 --version
 
                     echo "Docker:"
-                    which docker
                     docker --version
 
-                    echo "AWS CLI:"
-                    which aws
+                    echo "Buildx:"
+                    docker buildx version
+
+                    echo "AWS:"
                     aws --version
-
-                    echo "JQ:"
-                    which jq
-                    jq --version
+                    aws sts get-caller-identity
                 '''
-            }
-        }
-
-        stage('Checkout') {
-            steps {
-                checkout scm
             }
         }
 
@@ -65,16 +49,17 @@ pipeline {
             steps {
                 dir('backend') {
                     sh '''
-                        python3.11 -m venv .venv
+                        python3 -m venv .venv
                         . .venv/bin/activate
                         python -m pip install --upgrade pip
                         pip install -r requirements.txt
+                        pip install ruff bandit
                     '''
                 }
             }
         }
 
-        stage('Run Unit Tests') {
+        stage('Pytest') {
             steps {
                 dir('backend') {
                     sh '''
@@ -85,234 +70,125 @@ pipeline {
             }
         }
 
-        stage('Run Security Checks') {
+        stage('Ruff') {
             steps {
                 dir('backend') {
                     sh '''
                         . .venv/bin/activate
-                        pip install ruff bandit
-                        ruff check app
+                        ruff check app tests
+                    '''
+                }
+            }
+        }
+
+        stage('Bandit') {
+            steps {
+                dir('backend') {
+                    sh '''
+                        . .venv/bin/activate
                         bandit -r app -ll
                     '''
                 }
             }
         }
 
-        stage('Build Docker Image') {
+        stage('Prepare Image Tags') {
             steps {
-                sh '''
-                    set -e
+                script {
+                    env.ACCOUNT_ID = sh(
+                        script: "aws sts get-caller-identity --query Account --output text",
+                        returnStdout: true
+                    ).trim()
 
-                    echo "Building Docker image..."
+                    env.ECR_REGISTRY = "${env.ACCOUNT_ID}.dkr.ecr.${env.AWS_REGION}.amazonaws.com"
+                    env.ECR_IMAGE = "${env.ECR_REGISTRY}/${env.ECR_REPOSITORY}"
 
-                    docker build \
-                      -t ${LOCAL_IMAGE} \
-                      -f backend/Dockerfile \
-                      backend
+                    env.GIT_SHORT_SHA = sh(
+                        script: "git rev-parse --short HEAD",
+                        returnStdout: true
+                    ).trim()
 
-                    echo "Local Docker image:"
-                    docker images | grep ${ECR_REPO}
-                '''
+                    env.IMAGE_TAG_BUILD = "${env.ECR_IMAGE}:${env.BUILD_NUMBER}"
+                    env.IMAGE_TAG_SHA = "${env.ECR_IMAGE}:${env.GIT_SHORT_SHA}"
+                    env.IMAGE_TAG_DEV = "${env.ECR_IMAGE}:dev-latest"
+
+                    echo "IMAGE_TAG_BUILD=${env.IMAGE_TAG_BUILD}"
+                    echo "IMAGE_TAG_SHA=${env.IMAGE_TAG_SHA}"
+                    echo "IMAGE_TAG_DEV=${env.IMAGE_TAG_DEV}"
+                }
             }
         }
 
         stage('Login to ECR') {
             steps {
-                withCredentials([[ $class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'aws-ecr-jenkins' ]]) {
-                    sh '''
-                        set -e
-
-                        echo "Logging in to AWS ECR..."
-
-                        aws ecr get-login-password --region ${AWS_REGION} \
-                          | docker login \
-                              --username AWS \
-                              --password-stdin ${ECR_REGISTRY}
-                    '''
-                }
-            }
-        }
-
-        stage('Tag Image') {
-            steps {
                 sh '''
-                    set -e
-
-                    echo "Tagging Docker image..."
-
-                    docker tag ${LOCAL_IMAGE} ${ECR_IMAGE}
-
-                    echo "ECR image:"
-                    echo ${ECR_IMAGE}
+                    aws ecr get-login-password --region ${AWS_REGION} | \
+                    docker login --username AWS --password-stdin ${ECR_REGISTRY}
                 '''
             }
         }
 
-        stage('Push Image to ECR') {
-            steps {
-                withCredentials([[ $class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'aws-ecr-jenkins' ]]) {
-                    sh '''
-                        set -e
-
-                        echo "Pushing image to ECR..."
-                        docker push ${ECR_IMAGE}
-                    '''
-                }
-            }
-        }
-
-        stage('Archive Image URI') {
+        stage('Setup Buildx') {
             steps {
                 sh '''
-                    echo ${ECR_IMAGE} > image-uri.txt
-                    cat image-uri.txt
+                    docker buildx create --name rag-builder --use || docker buildx use rag-builder
+                    docker buildx inspect --bootstrap
+                '''
+            }
+        }
+
+        stage('Build and Push linux/amd64 Image') {
+            steps {
+                sh '''
+                    docker buildx build \
+                      --platform linux/amd64 \
+                      -t ${IMAGE_TAG_BUILD} \
+                      -t ${IMAGE_TAG_SHA} \
+                      -t ${IMAGE_TAG_DEV} \
+                      --push \
+                      ./backend
+                '''
+            }
+        }
+
+        stage('Archive Image Info') {
+            steps {
+                sh '''
+                    mkdir -p artifacts
+
+                    cat > artifacts/image-info.txt << EOF
+ECR_IMAGE=${ECR_IMAGE}
+BUILD_NUMBER_TAG=${IMAGE_TAG_BUILD}
+GIT_SHA_TAG=${IMAGE_TAG_SHA}
+DEV_LATEST_TAG=${IMAGE_TAG_DEV}
+GIT_COMMIT=${GIT_COMMIT}
+GIT_SHORT_SHA=${GIT_SHORT_SHA}
+AWS_REGION=${AWS_REGION}
+EOF
+
+                    cat artifacts/image-info.txt
+
+                    aws s3 cp artifacts/image-info.txt \
+                      s3://${S3_ARTIFACT_BUCKET}/jenkins/rag-testgen-api/${BUILD_NUMBER}/image-info.txt
                 '''
 
-                archiveArtifacts artifacts: 'image-uri.txt', fingerprint: true
-            }
-        }
-
-        stage('Deploy to ECS Dev') {
-            steps {
-                withCredentials([[ $class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'aws-ecr-jenkins' ]]) {
-                    sh '''
-                        set -e
-
-                        echo "Deploying image to ECS:"
-                        echo ${ECR_IMAGE}
-
-                        echo "Reading current ECS task definition..."
-
-                        aws ecs describe-task-definition \
-                          --task-definition ${TASK_FAMILY} \
-                          --region ${AWS_REGION} \
-                          --query taskDefinition > current-task-def.json
-
-                        echo "Creating new task definition JSON with updated image..."
-
-                        jq \
-                              --arg IMAGE_URI "${ECR_IMAGE}" \
-                              --arg CONTAINER_NAME "${CONTAINER_NAME}" \
-                              --arg EFS_ID "${EFS_ID}" \
-                              --arg CHROMA_PERSIST_DIR "${CHROMA_PERSIST_DIR}" \
-                              'del(
-                                .taskDefinitionArn,
-                                .revision,
-                                .status,
-                                .requiresAttributes,
-                                .compatibilities,
-                                .registeredAt,
-                                .registeredBy
-                              )
-                              | .volumes = (
-                                  ((.volumes // []) | map(select(.name != "chroma-efs")))
-                                  + [{
-                                      "name": "chroma-efs",
-                                      "efsVolumeConfiguration": {
-                                        "fileSystemId": $EFS_ID,
-                                        "rootDirectory": "/",
-                                        "transitEncryption": "ENABLED"
-                                      }
-                                    }]
-                                )
-                              | (.containerDefinitions[] | select(.name == $CONTAINER_NAME) | .image) = $IMAGE_URI
-                              | (.containerDefinitions[] | select(.name == $CONTAINER_NAME) | .mountPoints) =
-                                  (
-                                    ((.containerDefinitions[] | select(.name == $CONTAINER_NAME) | .mountPoints) // [])
-                                    | map(select(.sourceVolume != "chroma-efs"))
-                                    + [{
-                                        "sourceVolume": "chroma-efs",
-                                        "containerPath": "/data",
-                                        "readOnly": false
-                                      }]
-                                  )
-                              | (.containerDefinitions[] | select(.name == $CONTAINER_NAME) | .environment) =
-                                  (
-                                    ((.containerDefinitions[] | select(.name == $CONTAINER_NAME) | .environment) // [])
-                                    | map(select(.name != "CHROMA_PERSIST_DIR"))
-                                    + [{"name": "CHROMA_PERSIST_DIR", "value": $CHROMA_PERSIST_DIR}]
-                                  )' \
-                              current-task-def.json > new-task-def.json
-
-                        echo "Registering new ECS task definition revision..."
-
-                        NEW_TASK_DEF_ARN=$(aws ecs register-task-definition \
-                          --cli-input-json file://new-task-def.json \
-                          --region ${AWS_REGION} \
-                          --query 'taskDefinition.taskDefinitionArn' \
-                          --output text)
-
-                        echo "New task definition ARN:"
-                        echo $NEW_TASK_DEF_ARN
-
-                        echo "Updating ECS service..."
-
-                        aws ecs update-service \
-                          --cluster ${ECS_CLUSTER} \
-                          --service ${ECS_SERVICE} \
-                          --task-definition $NEW_TASK_DEF_ARN \
-                          --force-new-deployment \
-                          --region ${AWS_REGION}
-
-                        echo "Waiting for ECS service to become stable..."
-
-                        aws ecs wait services-stable \
-                          --cluster ${ECS_CLUSTER} \
-                          --services ${ECS_SERVICE} \
-                          --region ${AWS_REGION}
-
-                        echo "ECS deployment completed successfully."
-                    '''
-                }
-            }
-        }
-
-        stage('Smoke Test Dev') {
-            steps {
-                withCredentials([[ $class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'aws-ecr-jenkins' ]]) {
-                    sh '''
-                        set -e
-
-                        echo "Getting ALB DNS..."
-
-                        ALB_DNS=$(aws elbv2 describe-load-balancers \
-                          --names ${ALB_NAME} \
-                          --region ${AWS_REGION} \
-                          --query "LoadBalancers[0].DNSName" \
-                          --output text)
-
-                        echo "ALB DNS:"
-                        echo $ALB_DNS
-
-                        echo "Running smoke test:"
-                        echo "http://$ALB_DNS/health"
-
-                        curl -f http://$ALB_DNS/health
-
-                        echo "Smoke test passed."
-                    '''
-                }
+                archiveArtifacts artifacts: 'artifacts/image-info.txt', fingerprint: true
             }
         }
     }
 
     post {
         success {
-            echo "CI/CD pipeline passed. Docker image pushed and ECS deployed successfully: ${ECR_IMAGE}"
+            echo "SUCCESS: Docker linux/amd64 image pushed to ECR"
+            echo "Image: ${IMAGE_TAG_BUILD}"
         }
 
         failure {
-            echo 'CI/CD pipeline failed. Check test, lint, security, Docker build, ECR push, ECS deploy, or smoke test logs.'
+            echo "FAILED: Check pytest, ruff, bandit, Docker, ECR, or IAM role permissions"
         }
 
         always {
-            archiveArtifacts artifacts: '**/*.xml, **/reports/**, current-task-def.json, new-task-def.json', allowEmptyArchive: true
-
-            sh '''
-                echo "Cleaning unused local Docker images..."
-                docker image prune -f || true
-            '''
+            cleanWs()
         }
     }
 }
-

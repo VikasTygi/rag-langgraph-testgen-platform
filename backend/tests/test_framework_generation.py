@@ -25,11 +25,11 @@ def test_generate_robot_framework_code():
         },
     )
 
-    assert response.status_code == 200
+    assert response.status_code == 202
     data = response.json()
 
-    assert data["framework"] == "robot"
-    assert "*** Test Cases ***" in data["generated_code"]
+    assert data["status"] == "QUEUED"
+    assert data["generation_id"].startswith("gen_")
 
 
 def test_generate_python_pytest_code():
@@ -52,11 +52,11 @@ def test_generate_python_pytest_code():
         },
     )
 
-    assert response.status_code == 200
+    assert response.status_code == 202
     data = response.json()
 
-    assert data["framework"] == "python"
-    assert "def test_" in data["generated_code"]
+    assert data["status"] == "QUEUED"
+    assert data["generation_id"].startswith("gen_")
 
 
 def test_generate_playwright_code():
@@ -80,8 +80,8 @@ def test_generate_playwright_code():
         },
     )
 
-    assert response.status_code == 200
+    assert response.status_code == 202
     data = response.json()
 
-    assert data["framework"] == "playwright"
-    assert "@playwright/test" in data["generated_code"]
+    assert data["status"] == "QUEUED"
+    assert data["generation_id"].startswith("gen_")

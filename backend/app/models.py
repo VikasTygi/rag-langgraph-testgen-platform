@@ -57,3 +57,8 @@ class GenerateResponse(BaseModel):
     errors: list[str] = []
     fix_attempts: int = 0
     validation_summary: str | None = None
+
+
+class GenerateQueuedResponse(BaseModel):
+    generation_id: str
+    status: str

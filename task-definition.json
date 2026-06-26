@@ -1,0 +1,48 @@
+{
+  "family": "rag-testgen-api-dev",
+  "networkMode": "awsvpc",
+  "requiresCompatibilities": ["FARGATE"],
+  "cpu": "512",
+  "memory": "1024",
+  "executionRoleArn": "arn:aws:iam::989571800722:role/rag-testgen-ecs-execution-role-dev",
+  "taskRoleArn": "arn:aws:iam::989571800722:role/rag-testgen-app-task-role-dev",
+  "containerDefinitions": [
+    {
+      "name": "rag-testgen-api",
+      "image": "989571800722.dkr.ecr.ap-south-1.amazonaws.com/rag-langgraph-testgen-platform:amd64-v1",
+      "essential": true,
+      "portMappings": [
+        {
+          "containerPort": 8000,
+          "protocol": "tcp"
+        }
+      ],
+      "environment": [
+        {
+          "name": "APP_ENV",
+          "value": "dev"
+        },
+        {
+          "name": "CHROMA_PERSIST_DIR",
+          "value": "/data/chroma_db"
+        },
+        {
+          "name": "OLLAMA_BASE_URL",
+          "value": "http://<ollama-host-private-ip>:11434"
+        },
+        {
+          "name": "OLLAMA_MODEL",
+          "value": "qwen2.5-coder:7b"
+        }
+      ],
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "/ecs/rag-testgen-api",
+          "awslogs-region": "ap-south-1",
+          "awslogs-stream-prefix": "ecs"
+        }
+      }
+    }
+  ]
+}

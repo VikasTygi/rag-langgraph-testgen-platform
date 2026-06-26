@@ -1,11 +1,18 @@
+--index-url https://download.pytorch.org/whl/cpu
+--extra-index-url https://pypi.org/simple
+
 aiohappyeyeballs==2.6.2
 aiohttp==3.14.1
+aiokafka==0.14.0
 aiosignal==1.4.0
 annotated-doc==0.0.4
 annotated-types==0.7.0
 anyio==4.14.0
+async-timeout==5.0.1
 attrs==26.1.0
 bcrypt==5.0.0
+boto3==1.43.36
+botocore==1.43.36
 build==1.5.0
 certifi==2026.6.17
 cffi==2.0.0
@@ -15,7 +22,7 @@ click==8.4.1
 cryptography==49.0.0
 durationpy==0.10
 ecdsa==0.19.2
-fastapi==0.137.2
+fastapi==0.138.0
 filelock==3.29.4
 flatbuffers==25.12.19
 frozenlist==1.8.0
@@ -33,6 +40,7 @@ idna==3.18
 importlib_resources==7.1.0
 iniconfig==2.3.0
 Jinja2==3.1.6
+jmespath==1.1.0
 joblib==1.5.3
 jsonpatch==1.33
 jsonpointer==3.1.1
@@ -51,7 +59,7 @@ langgraph==1.2.6
 langgraph-checkpoint==4.1.1
 langgraph-prebuilt==1.1.0
 langgraph-sdk==0.4.2
-langsmith==0.8.17
+langsmith==0.8.18
 markdown-it-py==4.2.0
 MarkupSafe==3.0.3
 mdurl==0.1.2
@@ -82,18 +90,19 @@ pyasn1==0.6.3
 pybase64==1.4.3
 pycparser==3.0
 pydantic==2.13.4
-pydantic-settings==2.14.1
+pydantic-settings==2.14.2
 pydantic_core==2.46.4
 Pygments==2.20.0
 PyPika==0.51.1
 pyproject_hooks==1.2.0
 PySocks==1.7.1
-pytest==9.1.0
+pytest==9.1.1
 pytest-asyncio==1.4.0
 python-dateutil==2.9.0.post0
 python-dotenv==1.2.2
 python-jose==3.5.0
 PyYAML==6.0.3
+redis==8.0.1
 referencing==0.37.0
 regex==2026.5.9
 requests==2.34.2
@@ -106,6 +115,7 @@ robotframework-requests==0.9.7
 robotframework-seleniumlibrary==6.9.0
 rpds-py==2026.5.1
 rsa==4.9.1
+s3transfer==0.19.0
 safetensors==0.8.0
 scikit-learn==1.9.0
 scipy==1.17.1
