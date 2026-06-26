@@ -1,4 +1,10 @@
 import pytest
+import os
+
+os.environ["TESTING"] = "true"
+os.environ["DATABASE_URL"] = "sqlite:///./rag_testgen_test.db"
+os.environ["SQS_GENERATION_QUEUE_URL"] = "test-queue"
+os.environ["KAFKA_ENABLED"] = "false"
 
 import shutil
 import pytest

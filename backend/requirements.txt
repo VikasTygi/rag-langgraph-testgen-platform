@@ -1,3 +1,7 @@
+--index-url https://download.pytorch.org/whl/cpu
+--extra-index-url https://pypi.org/simple
+
+
 fastapi
 uvicorn[standard]
 pydantic
@@ -13,6 +17,8 @@ langchain-text-splitters
 langgraph
 
 chromadb
+
+
 sentence-transformers
 transformers
 torch
@@ -32,3 +38,8 @@ sentence-transformers
 langchain-text-splitters
 python-jose[cryptography]
 passlib[bcrypt]
+boto3
+redis
+aiokafka
+SQLAlchemy
+pydantic-settings
