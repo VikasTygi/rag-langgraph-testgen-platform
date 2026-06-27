@@ -7,6 +7,7 @@ pipeline {
         S3_ARTIFACT_BUCKET = 'rag-testgen-artifacts-989571800722-ap-south-1'
         ENVIRONMENT = 'test'
         DISABLE_RATE_LIMIT = 'true'
+        DISABLE_REDIS = 'true'
     }
 
     options {
