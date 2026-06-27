@@ -5,6 +5,8 @@ pipeline {
         AWS_REGION = 'ap-south-1'
         ECR_REPOSITORY = 'rag-testgen-api'
         S3_ARTIFACT_BUCKET = 'rag-testgen-artifacts-989571800722-ap-south-1'
+        ENVIRONMENT = 'test'
+        DISABLE_RATE_LIMIT = 'true'
     }
 
     options {

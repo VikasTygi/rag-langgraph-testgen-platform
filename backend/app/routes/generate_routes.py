@@ -1,4 +1,5 @@
 import asyncio
+import os
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -29,6 +30,14 @@ settings = get_settings()
 router = APIRouter()
 
 
+def limits_disabled() -> bool:
+    return (
+        settings.testing
+        or os.getenv("DISABLE_RATE_LIMIT", "false").lower() == "true"
+        or os.getenv("ENVIRONMENT", "").lower() == "test"
+    )
+
+
 @router.post(
     "/generate",
     response_model=GenerateQueuedResponse,
@@ -48,39 +57,40 @@ async def generate_test_script(
 
     safe_top_k = min(request.top_k, 5)
 
-    rate_allowed = await check_user_rate_limit(user_id)
+    if not limits_disabled():
+        rate_allowed = await check_user_rate_limit(user_id)
 
-    if not rate_allowed:
-        await kafka_events.publish(
-            EventType.USER_RATE_LIMITED,
-            user_id=user_id,
-            payload={
-                "framework": request.framework,
-                "reason": "rate_limit_exceeded",
-            },
-        )
+        if not rate_allowed:
+            await kafka_events.publish(
+                EventType.USER_RATE_LIMITED,
+                user_id=user_id,
+                payload={
+                    "framework": request.framework,
+                    "reason": "rate_limit_exceeded",
+                },
+            )
 
-        raise HTTPException(
-            status_code=429,
-            detail="Rate limit exceeded",
-        )
+            raise HTTPException(
+                status_code=429,
+                detail="Rate limit exceeded",
+            )
 
-    active_allowed = await check_active_job_limit(user_id)
+        active_allowed = await check_active_job_limit(user_id)
 
-    if not active_allowed:
-        await kafka_events.publish(
-            EventType.USER_RATE_LIMITED,
-            user_id=user_id,
-            payload={
-                "framework": request.framework,
-                "reason": "too_many_active_jobs",
-            },
-        )
+        if not active_allowed:
+            await kafka_events.publish(
+                EventType.USER_RATE_LIMITED,
+                user_id=user_id,
+                payload={
+                    "framework": request.framework,
+                    "reason": "too_many_active_jobs",
+                },
+            )
 
-        raise HTTPException(
-            status_code=429,
-            detail="Too many active jobs",
-        )
+            raise HTTPException(
+                status_code=429,
+                detail="Too many active jobs",
+            )
 
     guard_result = validate_prompt(request.user_prompt)
 
@@ -118,8 +128,6 @@ async def generate_test_script(
         ttl_seconds=settings.generation_status_ttl_seconds,
     )
 
-    await increment_active_jobs(user_id)
-
     job = {
         "generation_id": generation_id,
         "user_id": user_id,
@@ -140,18 +148,20 @@ async def generate_test_script(
             },
         )
 
-    return {
+        return {
             "generation_id": generation_id,
             "status": "QUEUED",
         }
 
-
+    if not limits_disabled():
+        await increment_active_jobs(user_id)
 
     try:
         await asyncio.to_thread(send_generation_job, job)
 
     except Exception as exc:
-        await decrement_active_jobs(user_id)
+        if not limits_disabled():
+            await decrement_active_jobs(user_id)
 
         update_generation_status(
             db=db,

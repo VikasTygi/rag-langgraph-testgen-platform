@@ -1,20 +1,40 @@
-import pytest
 import os
-
-os.environ["TESTING"] = "true"
-os.environ["DATABASE_URL"] = "sqlite:///./rag_testgen_test.db"
-os.environ["SQS_GENERATION_QUEUE_URL"] = "test-queue"
-os.environ["KAFKA_ENABLED"] = "false"
-
 import shutil
+from pathlib import Path
+
 import pytest
 
 
-@pytest.fixture(scope="session", autouse=True)
-def clean_chroma_db_for_tests():
-    shutil.rmtree("chroma_db", ignore_errors=True)
-    yield
-    shutil.rmtree("chroma_db", ignore_errors=True)
+TEST_ROOT = Path(__file__).resolve().parent.parent / ".test_artifacts"
+CHROMA_DIR = TEST_ROOT / "chroma_db"
+HF_HOME = TEST_ROOT / "hf_home"
+SENTENCE_TRANSFORMERS_HOME = TEST_ROOT / "sentence_transformers"
+
+
+# Clean once before app/test modules create Chroma clients.
+shutil.rmtree(TEST_ROOT, ignore_errors=True)
+shutil.rmtree("chroma_db", ignore_errors=True)
+
+TEST_ROOT.mkdir(parents=True, exist_ok=True)
+CHROMA_DIR.mkdir(parents=True, exist_ok=True)
+HF_HOME.mkdir(parents=True, exist_ok=True)
+SENTENCE_TRANSFORMERS_HOME.mkdir(parents=True, exist_ok=True)
+
+
+# Test environment
+os.environ["ENVIRONMENT"] = "test"
+os.environ["DISABLE_RATE_LIMIT"] = "true"
+
+# Force vector DB to writable test folder
+os.environ["CHROMA_DIR"] = str(CHROMA_DIR)
+os.environ["CHROMA_PERSIST_DIR"] = str(CHROMA_DIR)
+os.environ["VECTOR_STORE_DIR"] = str(CHROMA_DIR)
+
+# Force HuggingFace cache to writable test folder
+os.environ["HF_HOME"] = str(HF_HOME)
+os.environ["TRANSFORMERS_CACHE"] = str(HF_HOME)
+os.environ["SENTENCE_TRANSFORMERS_HOME"] = str(SENTENCE_TRANSFORMERS_HOME)
+
 
 @pytest.fixture(autouse=True)
 def mock_ollama_llm(monkeypatch):

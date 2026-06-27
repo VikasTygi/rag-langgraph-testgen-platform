@@ -12,7 +12,7 @@ from langchain_chroma import Chroma
 from langchain_huggingface import HuggingFaceEmbeddings
 
 
-CHROMA_DIR = os.getenv("CHROMA_PERSIST_DIR", "./chroma_db")
+CHROMA_DIR = os.getenv("CHROMA_PERSIST_DIR", os.getenv("CHROMA_DIR", "./chroma_db"))
 COLLECTION_NAME = "test_generation_docs"
 EMBEDDING_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
 
