@@ -5,6 +5,9 @@ pipeline {
         AWS_REGION = 'ap-south-1'
         ECR_REPOSITORY = 'rag-testgen-api'
         S3_ARTIFACT_BUCKET = 'rag-testgen-artifacts-989571800722-ap-south-1'
+        ENVIRONMENT = 'test'
+        DISABLE_RATE_LIMIT = 'true'
+        DISABLE_REDIS = 'true'
     }
 
     options {
@@ -29,8 +32,14 @@ pipeline {
                     echo "Workspace:"
                     pwd
 
+                    echo "Branch:"
+                    echo "BRANCH_NAME=${BRANCH_NAME}"
+                    echo "CHANGE_ID=${CHANGE_ID}"
+                    echo "CHANGE_BRANCH=${CHANGE_BRANCH}"
+                    echo "CHANGE_TARGET=${CHANGE_TARGET}"
+
                     echo "Python:"
-                    python3 --version
+                    python3.11 --version
 
                     echo "Docker:"
                     docker --version
@@ -49,8 +58,10 @@ pipeline {
             steps {
                 dir('backend') {
                     sh '''
-                        python3 -m venv .venv
+                        rm -rf .venv
+                        python3.11 -m venv .venv
                         . .venv/bin/activate
+
                         python -m pip install --upgrade pip
                         pip install -r requirements.txt
                         pip install ruff bandit
@@ -112,6 +123,9 @@ pipeline {
                     env.IMAGE_TAG_SHA = "${env.ECR_IMAGE}:${env.GIT_SHORT_SHA}"
                     env.IMAGE_TAG_DEV = "${env.ECR_IMAGE}:dev-latest"
 
+                    echo "ACCOUNT_ID=${env.ACCOUNT_ID}"
+                    echo "ECR_REGISTRY=${env.ECR_REGISTRY}"
+                    echo "ECR_IMAGE=${env.ECR_IMAGE}"
                     echo "IMAGE_TAG_BUILD=${env.IMAGE_TAG_BUILD}"
                     echo "IMAGE_TAG_SHA=${env.IMAGE_TAG_SHA}"
                     echo "IMAGE_TAG_DEV=${env.IMAGE_TAG_DEV}"
@@ -119,7 +133,53 @@ pipeline {
             }
         }
 
+        stage('Setup Buildx') {
+            steps {
+                sh '''
+                    docker buildx create --name rag-builder --driver docker-container --use || docker buildx use rag-builder
+                    docker buildx inspect --bootstrap
+                '''
+            }
+        }
+
+        stage('Build linux/amd64 Image - Validate Only') {
+            when {
+                expression { env.BRANCH_NAME != 'main' }
+            }
+            steps {
+                sh '''
+                    echo "Validation build only. This branch will NOT push image to ECR."
+                    echo "BRANCH_NAME=${BRANCH_NAME}"
+
+                    docker buildx build \
+                      --platform linux/amd64 \
+                      -t rag-testgen-api:${BUILD_NUMBER} \
+                      --load \
+                      ./backend
+                '''
+            }
+        }
+
+        stage('Ensure ECR Repository') {
+            when {
+                expression { env.BRANCH_NAME == 'main' }
+            }
+            steps {
+                sh '''
+                    aws ecr describe-repositories \
+                      --repository-names ${ECR_REPOSITORY} \
+                      --region ${AWS_REGION} || \
+                    aws ecr create-repository \
+                      --repository-name ${ECR_REPOSITORY} \
+                      --region ${AWS_REGION}
+                '''
+            }
+        }
+
         stage('Login to ECR') {
+            when {
+                expression { env.BRANCH_NAME == 'main' }
+            }
             steps {
                 sh '''
                     aws ecr get-login-password --region ${AWS_REGION} | \
@@ -128,18 +188,14 @@ pipeline {
             }
         }
 
-        stage('Setup Buildx') {
-            steps {
-                sh '''
-                    docker buildx create --name rag-builder --use || docker buildx use rag-builder
-                    docker buildx inspect --bootstrap
-                '''
-            }
-        }
-
         stage('Build and Push linux/amd64 Image') {
+            when {
+                expression { env.BRANCH_NAME == 'main' }
+            }
             steps {
                 sh '''
+                    echo "Main branch build. Image will be pushed to ECR."
+
                     docker buildx build \
                       --platform linux/amd64 \
                       -t ${IMAGE_TAG_BUILD} \
@@ -152,6 +208,9 @@ pipeline {
         }
 
         stage('Archive Image Info') {
+            when {
+                expression { env.BRANCH_NAME == 'main' }
+            }
             steps {
                 sh '''
                     mkdir -p artifacts
@@ -164,6 +223,8 @@ DEV_LATEST_TAG=${IMAGE_TAG_DEV}
 GIT_COMMIT=${GIT_COMMIT}
 GIT_SHORT_SHA=${GIT_SHORT_SHA}
 AWS_REGION=${AWS_REGION}
+BRANCH_NAME=${BRANCH_NAME}
+BUILD_NUMBER=${BUILD_NUMBER}
 EOF
 
                     cat artifacts/image-info.txt
@@ -179,12 +240,19 @@ EOF
 
     post {
         success {
-            echo "SUCCESS: Docker linux/amd64 image pushed to ECR"
-            echo "Image: ${IMAGE_TAG_BUILD}"
+            script {
+                if (env.BRANCH_NAME == 'main') {
+                    echo "SUCCESS: Main branch validated and Docker linux/amd64 image pushed to ECR."
+                    echo "Image: ${env.IMAGE_TAG_BUILD}"
+                } else {
+                    echo "SUCCESS: Branch/PR validation passed. Image was built locally but NOT pushed to ECR."
+                    echo "Branch: ${env.BRANCH_NAME}"
+                }
+            }
         }
 
         failure {
-            echo "FAILED: Check pytest, ruff, bandit, Docker, ECR, or IAM role permissions"
+            echo "FAILED: Check pytest, ruff, bandit, Docker, ECR, IAM role, or dependency installation."
         }
 
         always {
