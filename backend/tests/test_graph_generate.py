@@ -2,8 +2,6 @@ from fastapi.testclient import TestClient
 import pytest
 from app.main import app
 from tests.auth_helper import auth_headers
-import shutil
-from pathlib import Path
 
 client = TestClient(app)
 pytestmark = pytest.mark.slow
