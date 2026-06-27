@@ -54,7 +54,7 @@ class Settings(BaseSettings):
     sqs_generation_queue_url: str = ""
 
     # Kafka
-    kafka_enabled: bool = True
+    kafka_enabled: bool = False
     kafka_bootstrap_servers: str = "localhost:9092"
     kafka_events_topic: str = "rag-generation-events"
 

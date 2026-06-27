@@ -22,10 +22,16 @@ init_db()
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    init_db()
-    await kafka_events.start()
-    yield
-    await kafka_events.stop()
+    if settings.kafka_enabled:
+        await kafka_events.start()
+    else:
+        print("Kafka disabled. Skipping Kafka producer startup.")
+
+    try:
+        yield
+    finally:
+        if settings.kafka_enabled:
+            await kafka_events.stop()
 
 
 app = FastAPI(
