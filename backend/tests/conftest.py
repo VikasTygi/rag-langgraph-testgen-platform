@@ -24,6 +24,7 @@ SENTENCE_TRANSFORMERS_HOME.mkdir(parents=True, exist_ok=True)
 # Test environment
 os.environ["ENVIRONMENT"] = "test"
 os.environ["DISABLE_RATE_LIMIT"] = "true"
+os.environ["DISABLE_REDIS"] = "true"
 
 # Force vector DB to writable test folder
 os.environ["CHROMA_DIR"] = str(CHROMA_DIR)

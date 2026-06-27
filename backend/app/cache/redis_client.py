@@ -16,6 +16,15 @@ redis_client = redis.from_url(
 _test_cache: dict[str, str] = {}
 
 
+def redis_disabled_for_tests() -> bool:
+    return (
+        settings.testing
+        or os.getenv("ENVIRONMENT", "").lower() == "test"
+        or os.getenv("DISABLE_REDIS", "false").lower() == "true"
+    )
+
+
+
 async def set_json(key: str, value: dict[str, Any], ttl_seconds: int | None = None):
     if settings.testing:
         _test_cache[key] = json.dumps(value)
