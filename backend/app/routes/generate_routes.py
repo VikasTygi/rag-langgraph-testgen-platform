@@ -136,7 +136,7 @@ async def generate_test_script(
         "top_k": safe_top_k,
     }
 
-    if settings.testing:
+    if limits_disabled():
         await kafka_events.publish(
             EventType.GENERATION_REQUESTED,
             generation_id=generation_id,
