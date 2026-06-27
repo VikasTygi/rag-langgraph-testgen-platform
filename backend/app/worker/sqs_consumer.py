@@ -41,7 +41,26 @@ async def update_cached_status(
     )
 
 
-async def process_job(job: dict, kafka_events: KafkaEventProducer):
+async def publish_kafka_event(
+    kafka_events: KafkaEventProducer | None,
+    event_type: EventType,
+    generation_id: str,
+    user_id: str,
+    payload: dict,
+):
+    if not settings.kafka_enabled or kafka_events is None:
+        logger.info("Kafka disabled. Skipping event publish: %s", event_type)
+        return
+
+    await kafka_events.publish(
+        event_type,
+        generation_id=generation_id,
+        user_id=user_id,
+        payload=payload,
+    )
+
+
+async def process_job(job: dict, kafka_events: KafkaEventProducer | None):
     generation_id = job["generation_id"]
     user_id = job["user_id"]
 
@@ -55,8 +74,9 @@ async def process_job(job: dict, kafka_events: KafkaEventProducer):
         update_generation_status(db, generation_id, "RUNNING")
         await update_cached_status(generation_id, "RUNNING")
 
-        await kafka_events.publish(
-            EventType.GENERATION_STARTED,
+        await publish_kafka_event(
+            kafka_events=kafka_events,
+            event_type=EventType.GENERATION_STARTED,
             generation_id=generation_id,
             user_id=user_id,
             payload={"framework": job["framework"]},
@@ -88,8 +108,9 @@ async def process_job(job: dict, kafka_events: KafkaEventProducer):
             result_url=None,
         )
 
-        await kafka_events.publish(
-            EventType.GENERATION_SUCCEEDED,
+        await publish_kafka_event(
+            kafka_events=kafka_events,
+            event_type=EventType.GENERATION_SUCCEEDED,
             generation_id=generation_id,
             user_id=user_id,
             payload={"framework": job["framework"]},
@@ -111,8 +132,9 @@ async def process_job(job: dict, kafka_events: KafkaEventProducer):
             error_message=str(exc),
         )
 
-        await kafka_events.publish(
-            EventType.GENERATION_FAILED,
+        await publish_kafka_event(
+            kafka_events=kafka_events,
+            event_type=EventType.GENERATION_FAILED,
             generation_id=generation_id,
             user_id=user_id,
             payload={"error": str(exc)},
@@ -128,8 +150,14 @@ async def process_job(job: dict, kafka_events: KafkaEventProducer):
 async def consume_forever():
     init_db()
 
-    kafka_events = KafkaEventProducer()
-    await kafka_events.start()
+    kafka_events: KafkaEventProducer | None = None
+
+    if settings.kafka_enabled:
+        kafka_events = KafkaEventProducer()
+        await kafka_events.start()
+        logger.info("Kafka producer started.")
+    else:
+        logger.info("Kafka disabled. Worker will skip Kafka event publishing.")
 
     try:
         while True:
@@ -154,4 +182,6 @@ async def consume_forever():
                     # DLQ should catch poison messages later.
 
     finally:
-        await kafka_events.stop()
+        if kafka_events is not None:
+            await kafka_events.stop()
+            logger.info("Kafka producer stopped.")
