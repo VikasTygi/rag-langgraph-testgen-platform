@@ -1,0 +1,51 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: rag-testgen-api
+  namespace: rag-dev
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: rag-testgen-api
+  template:
+    metadata:
+      labels:
+        app: rag-testgen-api
+    spec:
+      containers:
+        - name: rag-testgen-api
+          image: 989571800722.dkr.ecr.ap-south-1.amazonaws.com/rag-testgen-api:dev-latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8000
+
+          envFrom:
+            - configMapRef:
+                name: rag-testgen-config
+            - secretRef:
+                name: rag-testgen-secret
+
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 20
+            periodSeconds: 10
+            failureThreshold: 5
+
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 40
+            periodSeconds: 20
+            failureThreshold: 5
+
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "256Mi"
+            limits:
+              cpu: "500m"
+              memory: "768Mi"

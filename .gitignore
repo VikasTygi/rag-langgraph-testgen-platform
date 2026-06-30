@@ -14,3 +14,20 @@ explaination.txt
 Functions_Used
 AWS_FUndamentals.txt
 AWS_Fundamentals.txt
+
+# Local DB files
+*.db
+backend/*.db
+
+# Test artifacts
+.test_artifacts/
+backend/.test_artifacts/
+
+# Local Kubernetes secrets
+k8s/secret.yaml
+
+# Local IAM scratch files
+iam_policy.json
+lbc-pod-identity-trust.json
+rag-api-pod-identity-trust.json
+rag-api-policy.json
