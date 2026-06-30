@@ -58,6 +58,10 @@ pipeline {
             steps {
                 dir('backend') {
                     sh '''
+
+                        export TMPDIR=/var/lib/jenkins/tmp
+                        export PIP_CACHE_DIR=/var/lib/jenkins/.cache/pip
+                        
                         rm -rf .venv
                         python3.11 -m venv .venv
                         . .venv/bin/activate

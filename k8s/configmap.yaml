@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: rag-testgen-config
+  namespace: rag-dev
+data:
+  ENV: "dev"
+  AWS_REGION: "ap-south-1"
+
+  # Week 3 learning setup: Kafka disabled
+  KAFKA_ENABLED: "false"
+  KAFKA_BOOTSTRAP_SERVERS: "localhost:9092"
+
+  # Optional app settings
+  LOG_LEVEL: "INFO"
