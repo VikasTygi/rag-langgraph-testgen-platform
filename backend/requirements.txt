@@ -36,3 +36,4 @@ redis
 aiokafka
 SQLAlchemy
 pydantic-settings
+psycopg2-binary>=2.9,<3
